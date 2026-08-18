@@ -4,10 +4,10 @@
  * sockets/index.js
  *
  * Registers all Socket.IO event handlers on the server.
- * Phase 3: temporary user sessions — join, leave, disconnect, user list.
+ * Phase 4: real-time messaging added (send_message / new_message).
  *
- * In-memory state is managed by userStore; no database is used.
- * Restarting the process clears all state automatically.
+ * All state is in-memory (userStore + messageStore).
+ * No database is used. Restarting clears everything.
  */
 
 const {
@@ -18,6 +18,14 @@ const {
   getUser,
   getAllUsers,
 } = require('../services/userStore');
+
+const {
+  validateMessage,
+  isRateLimited,
+  addMessage,
+  getRecentMessages,
+  clearRateLimit,
+} = require('../services/messageStore');
 
 /**
  * @param {import('socket.io').Server} io
@@ -48,32 +56,27 @@ function registerSocketHandlers(io) {
     });
 
     // ────────────────────────────────────────────────────────────────────────
-    // PHASE 3 EVENTS
+    // PHASE 3: User session events
     // ────────────────────────────────────────────────────────────────────────
 
     /**
-     * join_chat
-     * Client sends: { username: string }
-     * Server responds:
-     *   → chat_joined  (to this socket)  { user, users }
-     *   → user_joined  (broadcast all)   { user, users }
-     *   → chat_error   (to this socket on failure) { message }
+     * join_chat — { username }
+     * → chat_joined (socket)  { user, users, recentMessages }
+     * → user_joined (broadcast) { user, users }
+     * → chat_error (socket on failure) { message }
      */
     socket.on('join_chat', ({ username } = {}) => {
-      // Guard: already in chat
       if (getUser(socket.id)) {
         socket.emit('chat_error', { message: 'You are already in the chat.' });
         return;
       }
 
-      // Validate username
       const { valid, error, sanitized } = validateUsername(username);
       if (!valid) {
         socket.emit('chat_error', { message: error });
         return;
       }
 
-      // Duplicate username check
       if (isUsernameTaken(sanitized)) {
         socket.emit('chat_error', {
           message: `Username "${sanitized}" is already taken. Please choose another.`,
@@ -81,33 +84,72 @@ function registerSocketHandlers(io) {
         return;
       }
 
-      // Register user in temporary store
       const user = addUser(socket.id, sanitized);
       const users = getAllUsers();
 
       console.log(`[chat] join  username="${sanitized}"  id=${socket.id}  total=${users.length}`);
 
-      // Tell the joining socket they are in
-      socket.emit('chat_joined', { user, users });
+      // Send recent messages to the joining user so they see context
+      const recentMessages = getRecentMessages(50);
 
-      // Broadcast join notification to everyone else
+      socket.emit('chat_joined', { user, users, recentMessages });
       socket.broadcast.emit('user_joined', { user, users });
     });
 
     /**
-     * leave_chat
-     * Client sends: (no payload)
-     * Server responds:
-     *   → user_left   (broadcast all)   { user, users }
+     * leave_chat — no payload
+     * → user_left (broadcast all) { user, users }
      */
     socket.on('leave_chat', () => {
       const user = removeUser(socket.id);
-      if (!user) return; // wasn't in chat
+      if (!user) return;
 
+      clearRateLimit(socket.id);
       const users = getAllUsers();
       console.log(`[chat] leave  username="${user.username}"  id=${socket.id}  total=${users.length}`);
 
       io.emit('user_left', { user, users });
+    });
+
+    // ────────────────────────────────────────────────────────────────────────
+    // PHASE 4: Messaging events
+    // ────────────────────────────────────────────────────────────────────────
+
+    /**
+     * send_message — { text: string }
+     * → new_message (broadcast all) { id, socketId, username, text, timestamp }
+     * → message_error (socket on failure) { message }
+     */
+    socket.on('send_message', ({ text } = {}) => {
+      // Must be a joined user
+      const user = getUser(socket.id);
+      if (!user) {
+        socket.emit('message_error', { message: 'You must join the chat before sending messages.' });
+        return;
+      }
+
+      // Rate limiting
+      if (isRateLimited(socket.id)) {
+        socket.emit('message_error', { message: 'You are sending messages too fast. Please slow down.' });
+        return;
+      }
+
+      // Validate message text
+      const { valid, error, sanitized } = validateMessage(text);
+      if (!valid) {
+        socket.emit('message_error', { message: error });
+        return;
+      }
+
+      // Store and broadcast
+      const message = addMessage(socket.id, user.username, sanitized);
+
+      console.log(
+        `[chat] message  from="${user.username}"  len=${sanitized.length}  id=${message.id}`
+      );
+
+      // Broadcast to everyone including the sender
+      io.emit('new_message', message);
     });
 
     // ── Error guard ──────────────────────────────────────────────────────────
@@ -118,13 +160,13 @@ function registerSocketHandlers(io) {
     // ── Disconnect — auto-remove from user store ─────────────────────────────
     socket.on('disconnect', (reason) => {
       const user = removeUser(socket.id);
+      clearRateLimit(socket.id);
 
       if (user) {
         const users = getAllUsers();
         console.log(
           `[chat] disconnect  username="${user.username}"  id=${socket.id}  reason=${reason}  total=${users.length}`
         );
-        // Notify remaining users
         io.emit('user_left', { user, users });
       } else {
         console.log(`[socket] - disconnected (no session)  id=${socket.id}  reason=${reason}`);

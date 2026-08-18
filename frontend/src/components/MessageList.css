@@ -1,0 +1,180 @@
+/* ── Message list container ──────────────────────────────────────────────────── */
+.msg-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  scroll-behavior: smooth;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────────── */
+.msg-list-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-12);
+}
+
+.msg-list-empty-icon {
+  font-size: 48px;
+  margin-bottom: var(--space-4);
+  display: block;
+  opacity: 0.6;
+}
+
+.msg-list-empty-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: var(--space-2);
+}
+
+.msg-list-empty-sub {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+/* ── Items list ──────────────────────────────────────────────────────────────── */
+.msg-list-items {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  /* Push content to the bottom like a real chat */
+  margin-top: auto;
+}
+
+/* ── Event notifications (join / leave) ──────────────────────────────────────── */
+.msg-event {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  margin: var(--space-2) 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  animation: fade-in 0.25s ease;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.msg-event-icon {
+  font-size: 11px;
+}
+
+.msg-event-text strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.msg-event-time {
+  font-size: 0.6875rem;
+  color: var(--color-text-disabled);
+}
+
+/* ── Message bubble row ──────────────────────────────────────────────────────── */
+.msg-bubble-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  max-width: 100%;
+  animation: slide-up 0.18s ease;
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Other user's message — left aligned */
+.msg-bubble-row:not(.msg-bubble-row--own) {
+  justify-content: flex-start;
+  margin-bottom: var(--space-2);
+}
+
+/* Own message — right aligned */
+.msg-bubble-row--own {
+  flex-direction: row;
+  justify-content: flex-end;
+  margin-bottom: var(--space-2);
+}
+
+/* ── Avatar ──────────────────────────────────────────────────────────────────── */
+.msg-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: var(--avatar-color, var(--color-primary));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+/* ── Bubble group ────────────────────────────────────────────────────────────── */
+.msg-bubble-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: min(72%, 520px);
+}
+
+.msg-bubble-row--own .msg-bubble-group {
+  align-items: flex-end;
+}
+
+/* Sender name — only for others' messages */
+.msg-sender {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding-left: var(--space-2);
+  margin-bottom: 1px;
+}
+
+/* ── Bubble ──────────────────────────────────────────────────────────────────── */
+.msg-bubble {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-lg);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* Other user bubble */
+.msg-bubble--other {
+  background: var(--color-raised);
+  border: 1px solid var(--color-border);
+  border-bottom-left-radius: var(--radius-sm);
+  color: var(--color-text);
+}
+
+/* Own bubble */
+.msg-bubble--own {
+  background: var(--color-primary);
+  border-bottom-right-radius: var(--radius-sm);
+  color: #fff;
+}
+
+.msg-text {
+  font-size: 0.9375rem;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* ── Timestamp ───────────────────────────────────────────────────────────────── */
+.msg-time {
+  font-size: 0.6875rem;
+  color: var(--color-text-disabled);
+  padding: 0 var(--space-2);
+}

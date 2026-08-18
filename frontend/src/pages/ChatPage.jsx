@@ -1,22 +1,32 @@
 import React from 'react';
 import { avatarColor, avatarInitials, formatJoinTime } from '../utils/avatar';
+import { MessageList } from '../components/MessageList';
+import { MessageInput } from '../components/MessageInput';
 import './ChatPage.css';
 
 /**
- * ChatPage — Phase 3 scope.
- *
- * Displays:
- *  - Header with current user info and Leave button
- *  - Online users sidebar
- *  - Join/leave notification feed (messages come in Phase 4)
+ * ChatPage — Phase 4: full real-time messaging.
  *
  * Props:
- *  - currentUser  { socketId, username, joinedAt }
- *  - users        Array<{ socketId, username, joinedAt }>
- *  - notifications Array<{ id, type, username, ts }>
+ *  - currentUser    { socketId, username, joinedAt }
+ *  - users          Array<{ socketId, username, joinedAt }>
+ *  - notifications  Array<{ id, type, username, ts }>
+ *  - messages       Array<{ id, socketId, username, text, timestamp }>
+ *  - messageError   string | null
+ *  - clearMessageError()
+ *  - sendMessage(text)
  *  - leaveChat()
  */
-export function ChatPage({ currentUser, users, notifications, leaveChat }) {
+export function ChatPage({
+  currentUser,
+  users,
+  notifications,
+  messages,
+  messageError,
+  clearMessageError,
+  sendMessage,
+  leaveChat,
+}) {
   return (
     <div className="chat-shell">
 
@@ -95,51 +105,22 @@ export function ChatPage({ currentUser, users, notifications, leaveChat }) {
           </ul>
         </aside>
 
-        {/* ── Main content area ────────────────────────────────────────── */}
+        {/* ── Main chat area ────────────────────────────────────────────── */}
         <main className="chat-main" aria-label="Chat area">
+          {/* Message feed — merges messages + notifications */}
+          <MessageList
+            messages={messages}
+            notifications={notifications}
+            currentUser={currentUser}
+          />
 
-          {/* Notifications / event feed */}
-          <div className="chat-event-feed" aria-live="polite" aria-label="Chat events">
-            {notifications.length === 0 ? (
-              <div className="chat-empty-state">
-                <span className="chat-empty-icon">👋</span>
-                <p className="chat-empty-text">
-                  You&apos;re in! Say hello when messaging is ready in Phase 4.
-                </p>
-                <p className="chat-empty-sub">
-                  Join and leave events will appear here.
-                </p>
-              </div>
-            ) : (
-              <ul className="chat-notif-list" role="list">
-                {notifications.map((n) => (
-                  <li key={n.id} className={`chat-notif chat-notif--${n.type}`}>
-                    <span className="chat-notif-icon">
-                      {n.type === 'join' ? '🟢' : '🔴'}
-                    </span>
-                    <span className="chat-notif-text">
-                      <strong>{n.username}</strong>{' '}
-                      {n.type === 'join' ? 'joined the chat' : 'left the chat'}
-                    </span>
-                    <span className="chat-notif-time">
-                      {new Date(n.ts).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                      })}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* Message area placeholder — Phase 4 */}
-          <div className="chat-composer-placeholder">
-            <span className="chat-composer-placeholder-text">
-              💬 Messaging coming in Phase 4
-            </span>
-          </div>
+          {/* Message composer */}
+          <MessageInput
+            onSend={sendMessage}
+            messageError={messageError}
+            clearMessageError={clearMessageError}
+            disabled={false}
+          />
         </main>
       </div>
     </div>

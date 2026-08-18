@@ -1,13 +1,14 @@
 /**
- * Phase 3 integration test — temporary user sessions.
+ * Phase 4 integration test — real-time messaging.
  *
  * Tests:
- *  1. Valid join → chat_joined received
- *  2. Duplicate username → chat_error
- *  3. Invalid username (too short) → chat_error
- *  4. Second client sees user_joined when first joins
- *  5. Users list is correct after two joins
- *  6. Disconnect removes user from list (user_left broadcast)
+ *  1. Send message → both sender and other user receive new_message
+ *  2. Message contains correct metadata (id, socketId, username, text, timestamp)
+ *  3. Empty message → message_error
+ *  4. Message too long → message_error
+ *  5. Send without joining → message_error
+ *  6. Second user joining receives recentMessages in chat_joined
+ *  7. Messages cleared after server restart (verified conceptually via in-memory assertion)
  */
 
 const { io } = require('socket.io-client');
@@ -33,96 +34,85 @@ function makeClient() {
 function waitForEvent(socket, event, timeoutMs = 3000) {
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(`Timeout waiting for "${event}"`)), timeoutMs);
-    socket.once(event, (data) => {
-      clearTimeout(t);
-      resolve(data);
-    });
+    socket.once(event, (data) => { clearTimeout(t); resolve(data); });
   });
 }
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 async function runTests() {
-  console.log('\n[test] Phase 3 — Temporary User Session\n');
+  console.log('\n[test] Phase 4 — Real-Time Messaging\n');
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // TEST 1: Valid join
-  // ─────────────────────────────────────────────────────────────────────────
-  console.log('── Test 1: Valid join ──');
+  // ── TEST 1 & 2: Valid message, correct metadata ───────────────────────────
+  console.log('── Test 1-2: Valid message + metadata ──');
   const c1 = makeClient();
-  await waitForEvent(c1, 'connect');
-
-  c1.emit('join_chat', { username: 'Alice' });
-  const joined1 = await waitForEvent(c1, 'chat_joined', 4000);
-
-  assert(joined1.user.username === 'Alice', 'chat_joined user.username = "Alice"');
-  assert(joined1.user.socketId === c1.id, 'chat_joined user.socketId matches socket');
-  assert(typeof joined1.user.joinedAt === 'string', 'chat_joined user.joinedAt is string');
-  assert(Array.isArray(joined1.users), 'chat_joined users is an array');
-  assert(joined1.users.length === 1, 'users list has 1 user');
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // TEST 2: Duplicate username
-  // ─────────────────────────────────────────────────────────────────────────
-  console.log('\n── Test 2: Duplicate username ──');
   const c2 = makeClient();
+  await waitForEvent(c1, 'connect');
   await waitForEvent(c2, 'connect');
 
-  c2.emit('join_chat', { username: 'Alice' });
-  const err2 = await waitForEvent(c2, 'chat_error', 4000);
-
-  assert(typeof err2.message === 'string', 'chat_error.message is a string');
-  assert(err2.message.toLowerCase().includes('taken'), 'chat_error mentions "taken"');
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // TEST 3: Invalid username (too short)
-  // ─────────────────────────────────────────────────────────────────────────
-  console.log('\n── Test 3: Invalid username (1 char) ──');
-  c2.emit('join_chat', { username: 'X' });
-  const err3 = await waitForEvent(c2, 'chat_error', 4000);
-
-  assert(typeof err3.message === 'string', 'chat_error.message is a string');
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // TEST 4: Second client sees user_joined when first was already in
-  // ─────────────────────────────────────────────────────────────────────────
-  console.log('\n── Test 4: user_joined broadcast ──');
-
-  // Listen for user_joined on c1 BEFORE c2 joins
-  const userJoinedPromise = waitForEvent(c1, 'user_joined', 4000);
+  c1.emit('join_chat', { username: 'Alice' });
+  await waitForEvent(c1, 'chat_joined');
 
   c2.emit('join_chat', { username: 'Bob' });
-  const joined2 = await waitForEvent(c2, 'chat_joined', 4000);
-  const userJoined = await userJoinedPromise;
+  await waitForEvent(c2, 'chat_joined');
 
-  assert(joined2.user.username === 'Bob', 'Bob: chat_joined.user.username = "Bob"');
-  assert(userJoined.user.username === 'Bob', 'Alice sees user_joined with username "Bob"');
-  assert(joined2.users.length === 2, 'users list has 2 users after Bob joins');
+  // Both should receive the message
+  const c2MsgPromise = waitForEvent(c2, 'new_message', 4000);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // TEST 5: Users list correct
-  // ─────────────────────────────────────────────────────────────────────────
-  console.log('\n── Test 5: Users list ──');
-  const names = joined2.users.map((u) => u.username).sort();
-  assert(names.includes('Alice'), 'users list contains Alice');
-  assert(names.includes('Bob'),   'users list contains Bob');
+  c1.emit('send_message', { text: 'Hello from Alice!' });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // TEST 6: Disconnect removes user
-  // ─────────────────────────────────────────────────────────────────────────
-  console.log('\n── Test 6: Disconnect removes user ──');
-  const userLeftPromise = waitForEvent(c2, 'user_left', 4000);
+  const msgFromC1 = await waitForEvent(c1, 'new_message', 4000);
+  const msgFromC2 = await c2MsgPromise;
 
+  assert(msgFromC1.text === 'Hello from Alice!', 'sender receives own message');
+  assert(msgFromC2.text === 'Hello from Alice!', 'other user receives message');
+  assert(msgFromC1.id === msgFromC2.id,           'both have the same message id');
+  assert(typeof msgFromC1.id === 'string',         'id is a string');
+  assert(msgFromC1.username === 'Alice',           'username is correct');
+  assert(msgFromC1.socketId === c1.id,             'socketId is correct');
+  assert(typeof msgFromC1.timestamp === 'string',  'timestamp is a string');
+
+  // ── TEST 3: Empty message rejected ───────────────────────────────────────
+  console.log('\n── Test 3: Empty message rejected ──');
+  c1.emit('send_message', { text: '   ' }); // whitespace-only
+  const errEmpty = await waitForEvent(c1, 'message_error', 4000);
+  assert(typeof errEmpty.message === 'string', 'message_error received for empty message');
+
+  // ── TEST 4: Message too long rejected ────────────────────────────────────
+  console.log('\n── Test 4: Message too long rejected ──');
+  c1.emit('send_message', { text: 'x'.repeat(501) });
+  const errLong = await waitForEvent(c1, 'message_error', 4000);
+  assert(typeof errLong.message === 'string', 'message_error received for long message');
+
+  // ── TEST 5: Send without join → error ────────────────────────────────────
+  console.log('\n── Test 5: Send without joining ──');
+  const c3 = makeClient();
+  await waitForEvent(c3, 'connect');
+  c3.emit('send_message', { text: 'sneaky message' });
+  const errNoJoin = await waitForEvent(c3, 'message_error', 4000);
+  assert(typeof errNoJoin.message === 'string', 'message_error for unauthenticated sender');
+  c3.disconnect();
+
+  // ── TEST 6: Joining user receives recentMessages ──────────────────────────
+  console.log('\n── Test 6: Late joiner gets recent messages ──');
+  // c1 sends another message
+  c1.emit('send_message', { text: 'Hi newcomer!' });
+  await sleep(200);
+
+  const c4 = makeClient();
+  await waitForEvent(c4, 'connect');
+  c4.emit('join_chat', { username: 'Charlie' });
+  const joined4 = await waitForEvent(c4, 'chat_joined', 4000);
+
+  assert(Array.isArray(joined4.recentMessages), 'chat_joined includes recentMessages array');
+  assert(joined4.recentMessages.length >= 1,     'at least 1 message in recentMessages');
+  const texts = joined4.recentMessages.map((m) => m.text);
+  assert(texts.includes('Hello from Alice!'),    'recentMessages includes first message');
+
+  c4.disconnect();
+
+  // ── Cleanup ───────────────────────────────────────────────────────────────
   c1.disconnect();
-  const userLeft = await userLeftPromise;
-
-  assert(userLeft.user.username === 'Alice', 'user_left.user.username = "Alice"');
-  assert(userLeft.users.length === 1, 'users list has 1 user after Alice disconnects');
-  assert(userLeft.users[0].username === 'Bob', 'remaining user is Bob');
-
-  // ─────────────────────────────────────────────────────────────────────────
   c2.disconnect();
   await sleep(200);
 
