@@ -231,6 +231,18 @@
   color: var(--color-text-disabled);
 }
 
+.chat-user-typing-status {
+  font-size: 0.6875rem;
+  color: var(--color-primary);
+  font-weight: 500;
+  animation: pulse-text 1s ease-in-out infinite alternate;
+}
+
+@keyframes pulse-text {
+  from { opacity: 0.6; }
+  to   { opacity: 1; }
+}
+
 .chat-user-online-dot {
   width: 8px;
   height: 8px;

@@ -18,8 +18,10 @@ const MESSAGE_MAX_LENGTH = 500;
  *  - messageError        — server error string | null
  *  - clearMessageError() — clears error state
  *  - disabled            — true when not in chat / not connected
+ *  - onTyping()          — called on every keypress (typing indicator)
+ *  - onStopTyping()      — called immediately after send
  */
-export function MessageInput({ onSend, messageError, clearMessageError, disabled }) {
+export function MessageInput({ onSend, messageError, clearMessageError, disabled, onTyping, onStopTyping }) {
   const [text, setText] = useState('');
   const textareaRef = useRef(null);
 
@@ -52,6 +54,7 @@ export function MessageInput({ onSend, messageError, clearMessageError, disabled
 
   const handleSend = () => {
     if (!canSend) return;
+    if (onStopTyping) onStopTyping(); // clear typing indicator before send
     onSend(text);
     setText('');
     // Reset height
@@ -77,7 +80,10 @@ export function MessageInput({ onSend, messageError, clearMessageError, disabled
           className="msg-input-textarea"
           placeholder={disabled ? 'Join the chat to send messages…' : 'Type a message… (Enter to send, Shift+Enter for newline)'}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (onTyping) onTyping();
+          }}
           onKeyDown={handleKeyDown}
           disabled={disabled}
           rows={1}

@@ -3,6 +3,7 @@ import './index.css';
 import { useSocket } from './hooks/useSocket';
 import { useChat } from './hooks/useChat';
 import { useMessages } from './hooks/useMessages';
+import { useTyping } from './hooks/useTyping';
 import { JoinPage } from './pages/JoinPage';
 import { ChatPage } from './pages/ChatPage';
 
@@ -20,6 +21,7 @@ function App() {
   } = useChat();
 
   const { messages, messageError, clearMessageError, sendMessage } = useMessages();
+  const { typingUsers, notifyTyping, stopTypingNow } = useTyping();
 
   // Pre-connect socket so join form shows live status immediately
   useEffect(() => {
@@ -43,9 +45,12 @@ function App() {
       users={users}
       notifications={notifications}
       messages={messages}
+      typingUsers={typingUsers}
       messageError={messageError}
       clearMessageError={clearMessageError}
       sendMessage={sendMessage}
+      notifyTyping={notifyTyping}
+      stopTypingNow={stopTypingNow}
       leaveChat={leaveChat}
     />
   );

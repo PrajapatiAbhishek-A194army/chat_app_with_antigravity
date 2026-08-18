@@ -2,19 +2,23 @@ import React from 'react';
 import { avatarColor, avatarInitials, formatJoinTime } from '../utils/avatar';
 import { MessageList } from '../components/MessageList';
 import { MessageInput } from '../components/MessageInput';
+import { TypingIndicator } from '../components/TypingIndicator';
 import './ChatPage.css';
 
 /**
- * ChatPage — Phase 4: full real-time messaging.
+ * ChatPage — Phase 5: typing indicators added.
  *
  * Props:
- *  - currentUser    { socketId, username, joinedAt }
- *  - users          Array<{ socketId, username, joinedAt }>
- *  - notifications  Array<{ id, type, username, ts }>
- *  - messages       Array<{ id, socketId, username, text, timestamp }>
- *  - messageError   string | null
+ *  - currentUser      { socketId, username, joinedAt }
+ *  - users            Array<{ socketId, username, joinedAt }>
+ *  - notifications    Array<{ id, type, username, ts }>
+ *  - messages         Array<{ id, socketId, username, text, timestamp }>
+ *  - typingUsers      Array<{ socketId, username }>
+ *  - messageError     string | null
  *  - clearMessageError()
  *  - sendMessage(text)
+ *  - notifyTyping()
+ *  - stopTypingNow()
  *  - leaveChat()
  */
 export function ChatPage({
@@ -22,9 +26,12 @@ export function ChatPage({
   users,
   notifications,
   messages,
+  typingUsers,
   messageError,
   clearMessageError,
   sendMessage,
+  notifyTyping,
+  stopTypingNow,
   leaveChat,
 }) {
   return (
@@ -77,6 +84,9 @@ export function ChatPage({
           <ul className="chat-user-list" role="list">
             {users.map((user) => {
               const isMe = user.socketId === currentUser.socketId;
+              const isThisUserTyping = typingUsers.some(
+                (t) => t.socketId === user.socketId && t.socketId !== currentUser.socketId
+              );
               return (
                 <li
                   key={user.socketId}
@@ -95,7 +105,11 @@ export function ChatPage({
                       {isMe && <span className="chat-user-you"> (you)</span>}
                     </span>
                     <span className="chat-user-joined">
-                      Joined {formatJoinTime(user.joinedAt)}
+                      {isThisUserTyping ? (
+                        <span className="chat-user-typing-status">typing…</span>
+                      ) : (
+                        <>Joined {formatJoinTime(user.joinedAt)}</>
+                      )}
                     </span>
                   </div>
                   <span className="chat-user-online-dot" aria-label="online" />
@@ -107,12 +121,15 @@ export function ChatPage({
 
         {/* ── Main chat area ────────────────────────────────────────────── */}
         <main className="chat-main" aria-label="Chat area">
-          {/* Message feed — merges messages + notifications */}
+          {/* Message feed */}
           <MessageList
             messages={messages}
             notifications={notifications}
             currentUser={currentUser}
           />
+
+          {/* Typing indicator — shown between message list and composer */}
+          <TypingIndicator typingUsers={typingUsers} currentUser={currentUser} />
 
           {/* Message composer */}
           <MessageInput
@@ -120,6 +137,8 @@ export function ChatPage({
             messageError={messageError}
             clearMessageError={clearMessageError}
             disabled={false}
+            onTyping={notifyTyping}
+            onStopTyping={stopTypingNow}
           />
         </main>
       </div>

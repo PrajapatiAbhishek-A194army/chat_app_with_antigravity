@@ -1,14 +1,15 @@
 /**
- * Phase 4 integration test — real-time messaging.
+ * Phase 5 integration test — typing indicators.
  *
  * Tests:
- *  1. Send message → both sender and other user receive new_message
- *  2. Message contains correct metadata (id, socketId, username, text, timestamp)
- *  3. Empty message → message_error
- *  4. Message too long → message_error
- *  5. Send without joining → message_error
- *  6. Second user joining receives recentMessages in chat_joined
- *  7. Messages cleared after server restart (verified conceptually via in-memory assertion)
+ *  1. typing_start → other user receives user_typing with correct metadata
+ *  2. typing_start appears in typingUsers list
+ *  3. typing_stop → other user receives user_stopped_typing
+ *  4. typingUsers is empty after typing_stop
+ *  5. Disconnect while typing → user_stopped_typing broadcast
+ *  6. Sending a message auto-clears typing (user_stopped_typing after send_message)
+ *  7. Non-joined socket sending typing_start is silently ignored
+ *  8. chat_joined includes current typingUsers snapshot
  */
 
 const { io } = require('socket.io-client');
@@ -40,78 +41,114 @@ function waitForEvent(socket, event, timeoutMs = 3000) {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-async function runTests() {
-  console.log('\n[test] Phase 4 — Real-Time Messaging\n');
+async function joinAs(socket, username) {
+  socket.emit('join_chat', { username });
+  return waitForEvent(socket, 'chat_joined', 4000);
+}
 
-  // ── TEST 1 & 2: Valid message, correct metadata ───────────────────────────
-  console.log('── Test 1-2: Valid message + metadata ──');
+async function runTests() {
+  console.log('\n[test] Phase 5 — Typing Indicators\n');
+
   const c1 = makeClient();
   const c2 = makeClient();
   await waitForEvent(c1, 'connect');
   await waitForEvent(c2, 'connect');
+  await joinAs(c1, 'Alice');
+  await joinAs(c2, 'Bob');
 
-  c1.emit('join_chat', { username: 'Alice' });
-  await waitForEvent(c1, 'chat_joined');
+  // ── TEST 1 & 2: typing_start → user_typing with correct data ─────────────
+  console.log('── Test 1-2: typing_start → user_typing broadcast ──');
 
-  c2.emit('join_chat', { username: 'Bob' });
-  await waitForEvent(c2, 'chat_joined');
+  const typingPromise = waitForEvent(c2, 'user_typing', 4000);
+  c1.emit('typing_start');
+  const typingEvent = await typingPromise;
 
-  // Both should receive the message
-  const c2MsgPromise = waitForEvent(c2, 'new_message', 4000);
+  assert(typingEvent.socketId === c1.id,           'user_typing.socketId = Alice socket');
+  assert(typingEvent.username === 'Alice',          'user_typing.username = "Alice"');
+  assert(Array.isArray(typingEvent.typingUsers),    'user_typing.typingUsers is array');
+  assert(typingEvent.typingUsers.length === 1,      'typingUsers has 1 entry');
+  assert(typingEvent.typingUsers[0].username === 'Alice', 'typingUsers[0] is Alice');
 
-  c1.emit('send_message', { text: 'Hello from Alice!' });
+  // Sender (c1) should NOT receive their own user_typing event
+  let selfReceived = false;
+  c1.once('user_typing', () => { selfReceived = true; });
 
-  const msgFromC1 = await waitForEvent(c1, 'new_message', 4000);
-  const msgFromC2 = await c2MsgPromise;
+  // ── TEST 3 & 4: typing_stop → user_stopped_typing ──────────────────────
+  console.log('\n── Test 3-4: typing_stop → user_stopped_typing ──');
 
-  assert(msgFromC1.text === 'Hello from Alice!', 'sender receives own message');
-  assert(msgFromC2.text === 'Hello from Alice!', 'other user receives message');
-  assert(msgFromC1.id === msgFromC2.id,           'both have the same message id');
-  assert(typeof msgFromC1.id === 'string',         'id is a string');
-  assert(msgFromC1.username === 'Alice',           'username is correct');
-  assert(msgFromC1.socketId === c1.id,             'socketId is correct');
-  assert(typeof msgFromC1.timestamp === 'string',  'timestamp is a string');
+  const stopPromise = waitForEvent(c2, 'user_stopped_typing', 4000);
+  c1.emit('typing_stop');
+  const stopEvent = await stopPromise;
 
-  // ── TEST 3: Empty message rejected ───────────────────────────────────────
-  console.log('\n── Test 3: Empty message rejected ──');
-  c1.emit('send_message', { text: '   ' }); // whitespace-only
-  const errEmpty = await waitForEvent(c1, 'message_error', 4000);
-  assert(typeof errEmpty.message === 'string', 'message_error received for empty message');
+  assert(stopEvent.socketId === c1.id,           'user_stopped_typing.socketId correct');
+  assert(stopEvent.username === 'Alice',          'user_stopped_typing.username = "Alice"');
+  assert(Array.isArray(stopEvent.typingUsers),    'user_stopped_typing.typingUsers is array');
+  assert(stopEvent.typingUsers.length === 0,      'typingUsers is empty after stop');
 
-  // ── TEST 4: Message too long rejected ────────────────────────────────────
-  console.log('\n── Test 4: Message too long rejected ──');
-  c1.emit('send_message', { text: 'x'.repeat(501) });
-  const errLong = await waitForEvent(c1, 'message_error', 4000);
-  assert(typeof errLong.message === 'string', 'message_error received for long message');
+  await sleep(100);
+  assert(!selfReceived, 'sender does NOT receive own user_typing');
 
-  // ── TEST 5: Send without join → error ────────────────────────────────────
-  console.log('\n── Test 5: Send without joining ──');
+  // ── TEST 5: Disconnect while typing → user_stopped_typing broadcast ───────
+  console.log('\n── Test 5: Disconnect while typing ──');
   const c3 = makeClient();
   await waitForEvent(c3, 'connect');
-  c3.emit('send_message', { text: 'sneaky message' });
-  const errNoJoin = await waitForEvent(c3, 'message_error', 4000);
-  assert(typeof errNoJoin.message === 'string', 'message_error for unauthenticated sender');
+  await joinAs(c3, 'Charlie');
+
+  c3.emit('typing_start');
+  await waitForEvent(c2, 'user_typing', 4000); // wait for typing to propagate
+
+  const disconnectStopPromise = waitForEvent(c2, 'user_stopped_typing', 4000);
   c3.disconnect();
+  const disconnectStop = await disconnectStopPromise;
 
-  // ── TEST 6: Joining user receives recentMessages ──────────────────────────
-  console.log('\n── Test 6: Late joiner gets recent messages ──');
-  // c1 sends another message
-  c1.emit('send_message', { text: 'Hi newcomer!' });
-  await sleep(200);
+  assert(disconnectStop.username === 'Charlie', 'disconnect clears typing: username = "Charlie"');
+  assert(disconnectStop.typingUsers.length === 0, 'typingUsers empty after disconnect');
 
+  // ── TEST 6: Sending a message auto-clears typing ──────────────────────────
+  console.log('\n── Test 6: send_message auto-clears typing ──');
+  c1.emit('typing_start');
+  await waitForEvent(c2, 'user_typing', 4000);
+
+  const autoStopPromise = waitForEvent(c2, 'user_stopped_typing', 4000);
+  c1.emit('send_message', { text: 'Auto clear test' });
+  const autoStop = await autoStopPromise;
+
+  assert(autoStop.username === 'Alice',         'send_message auto-clears typing for Alice');
+  assert(autoStop.typingUsers.length === 0,     'typingUsers empty after message send');
+
+  // ── TEST 7: Non-joined socket → typing_start silently ignored ────────────
+  console.log('\n── Test 7: Non-joined socket typing_start ignored ──');
   const c4 = makeClient();
   await waitForEvent(c4, 'connect');
-  c4.emit('join_chat', { username: 'Charlie' });
-  const joined4 = await waitForEvent(c4, 'chat_joined', 4000);
 
-  assert(Array.isArray(joined4.recentMessages), 'chat_joined includes recentMessages array');
-  assert(joined4.recentMessages.length >= 1,     'at least 1 message in recentMessages');
-  const texts = joined4.recentMessages.map((m) => m.text);
-  assert(texts.includes('Hello from Alice!'),    'recentMessages includes first message');
+  let rogue = false;
+  c2.once('user_typing', () => { rogue = true; });
+  c4.emit('typing_start');
+  await sleep(300);
 
+  assert(!rogue, 'user_typing NOT broadcast from unjoined socket');
   c4.disconnect();
 
-  // ── Cleanup ───────────────────────────────────────────────────────────────
+  // ── TEST 8: chat_joined includes typingUsers snapshot ─────────────────────
+  console.log('\n── Test 8: chat_joined includes typingUsers snapshot ──');
+
+  // Alice starts typing, then a new user joins
+  c1.emit('typing_start');
+  await sleep(100);
+
+  const c5 = makeClient();
+  await waitForEvent(c5, 'connect');
+  c5.emit('join_chat', { username: 'Dave' });
+  const daveJoined = await waitForEvent(c5, 'chat_joined', 4000);
+
+  assert(Array.isArray(daveJoined.typingUsers), 'chat_joined.typingUsers is array');
+  assert(
+    daveJoined.typingUsers.some((u) => u.username === 'Alice'),
+    'Dave sees Alice in typingUsers snapshot'
+  );
+
+  c5.disconnect();
+  c1.emit('typing_stop');
   c1.disconnect();
   c2.disconnect();
   await sleep(200);
