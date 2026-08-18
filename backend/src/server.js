@@ -6,6 +6,7 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 
 const config = require('./config');
+const { registerSocketHandlers } = require('./sockets');
 
 // ── Express app ────────────────────────────────────────────────────────────────
 const app = express();
@@ -29,14 +30,8 @@ const io = new Server(httpServer, {
   },
 });
 
-// ── Basic Socket.IO connection handling (Phase 1 foundation) ──────────────────
-io.on('connection', (socket) => {
-  console.log(`[socket] connected   id=${socket.id}`);
-
-  socket.on('disconnect', (reason) => {
-    console.log(`[socket] disconnected id=${socket.id} reason=${reason}`);
-  });
-});
+// ── Register all Socket.IO event handlers ─────────────────────────────────────
+registerSocketHandlers(io);
 
 // ── Start listening ────────────────────────────────────────────────────────────
 httpServer.listen(config.port, () => {
