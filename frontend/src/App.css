@@ -1,0 +1,64 @@
+/* ── App shell ──────────────────────────────────────────────────────────────── */
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(108, 99, 255, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(74, 179, 244, 0.06) 0%, transparent 50%),
+    var(--color-bg);
+}
+
+/* ── Phase-1 placeholder ────────────────────────────────────────────────────── */
+.app-placeholder {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-12) var(--space-10);
+  max-width: 480px;
+  width: 100%;
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+}
+
+.placeholder-icon {
+  font-size: 56px;
+  margin-bottom: var(--space-5);
+  display: block;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-8px); }
+}
+
+.placeholder-title {
+  font-size: 2rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #6c63ff, #4ab3f4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: var(--space-3);
+}
+
+.placeholder-subtitle {
+  color: var(--color-text-muted);
+  font-size: 1rem;
+  line-height: 1.6;
+  margin-bottom: var(--space-4);
+}
+
+.placeholder-note {
+  display: inline-block;
+  background: rgba(108, 99, 255, 0.12);
+  border: 1px solid rgba(108, 99, 255, 0.3);
+  color: var(--color-primary);
+  border-radius: var(--radius-pill);
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}

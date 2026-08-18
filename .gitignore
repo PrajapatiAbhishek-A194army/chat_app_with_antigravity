@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Build outputs
+dist/
+build/
+*/dist/
+*/build/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime temporary files
+runtime/
+tmp/
+*.tmp
+*.temp
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+*.lcov
+
+# Misc
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
